@@ -264,6 +264,13 @@ void RenderHillshadeLayer::update(gfx::ShaderRegistry& shaders,
             }
             bucket.renderTarget = renderTarget;
             bucket.renderTargetPrepared = true;
+            // The DEM is baked into the prepare drawable once (setImage below), so its shaded
+            // output never changes: render this target once and keep the texture. Without the
+            // opt-in every DEM tile in the cover re-ran its prepare pass every frame (2-6
+            // offscreen passes per frame on a pitched navigation view, 2026-09-13 trace). A
+            // released-then-reactivated target keeps the texture in the bucket, so it is not
+            // re-prepared either.
+            renderTarget->setRenderOnce(true);
 
             auto singleTileLayerGroup = context.createTileLayerGroup(0, /*initialCapacity=*/1, getID(), false);
             if (!singleTileLayerGroup) {
