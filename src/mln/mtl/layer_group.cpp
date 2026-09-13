@@ -74,7 +74,7 @@ void LayerGroup::render(RenderOrchestrator&, PaintParameters& parameters) {
     gfx::StencilMode stencilMode3d;
     if (stencil3d) {
         stencilMode3d = parameters.stencilModeFor3D();
-        renderPass.getMetalEncoder()->setStencilReferenceValue(stencilMode3d.ref);
+        renderPass.setStencilReference(stencilMode3d.ref);
     }
     const auto getDepthStencilState = [&](bool depth, bool stencil) -> const MTLDepthStencilStatePtr& {
         auto& state = depth ? (stencil ? stateDepthStencil : stateDepth) : (stencil ? stateStencil : stateNone);
