@@ -6597,8 +6597,23 @@ static void *windowScreenContext = &windowScreenContext;
   if (self.locationManager) {
     // note that right/left device and interface orientations are opposites (see UIApplication.h)
     //
+    // UIApplication.statusBarOrientation is deprecated and, from iOS 27, a no-op that logs on
+    // every call (this method runs from layoutSubviews) and always answers portrait, which left
+    // the heading orientation wrong in landscape. Read the hosting scene's orientation instead.
+    UIInterfaceOrientation interfaceOrientation = UIInterfaceOrientationPortrait;
+    if (@available(iOS 13.0, *)) {
+      UIWindowScene *scene = self.window.windowScene;
+      if (scene) {
+        interfaceOrientation = scene.interfaceOrientation;
+      }
+    } else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+      interfaceOrientation = [[UIApplication sharedApplication] statusBarOrientation];
+#pragma clang diagnostic pop
+    }
     CLDeviceOrientation orientation;
-    switch ([[UIApplication sharedApplication] statusBarOrientation]) {
+    switch (interfaceOrientation) {
       case (UIInterfaceOrientationLandscapeLeft): {
         orientation = CLDeviceOrientationLandscapeRight;
         break;
