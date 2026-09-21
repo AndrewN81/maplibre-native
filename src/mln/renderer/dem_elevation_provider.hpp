@@ -5,6 +5,7 @@
 #include <mln/util/tile_cover.hpp>
 
 #include <optional>
+#include <vector>
 
 namespace mln {
 
@@ -34,8 +35,15 @@ public:
     std::optional<Range<double>> getTileElevationRange(const CanonicalTileID&) const override;
 
 private:
-    const RenderSource* demSource;
-    double exaggeration;
+    /// Elevation range (exaggeration applied) of each loaded DEM tile, copied out at
+    /// construction. The provider is queried from inside the source update loop, after the
+    /// DEM source's own update may already have released tiles from its pyramid, so it must
+    /// never dereference a tile after construction.
+    struct TileRange {
+        CanonicalTileID id;
+        Range<double> range;
+    };
+    std::vector<TileRange> tileRanges;
     /// Aggregate elevation range (exaggeration applied) of all loaded DEM tiles, computed
     /// once at construction; the fallback for tiles with no loaded DEM. nullopt when
     /// nothing is loaded.
