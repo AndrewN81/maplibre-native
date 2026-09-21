@@ -11,19 +11,23 @@
 
 namespace mln {
 
-DEMElevationProvider::DEMElevationProvider(const RenderSource* demSource_, double exaggeration_)
-    : demSource(demSource_),
-      exaggeration(exaggeration_) {
-    // Precompute the aggregate elevation range of every loaded DEM tile (once, here,
-    // not per query). It is the fallback for tiles with no loaded DEM, so the cover
-    // dilation can re-test a not-yet-loaded frontier neighbour as if it were about as
-    // tall/deep as the terrain already in view.
-    if (!demSource) {
+DEMElevationProvider::DEMElevationProvider(const RenderSource* demSource, double exaggeration) {
+    // Snapshot the elevation range of every loaded DEM tile (once, here, not per query).
+    // The aggregate is the fallback for tiles with no loaded DEM, so the cover dilation can
+    // re-test a not-yet-loaded frontier neighbour as if it were about as tall/deep as the
+    // terrain already in view.
+    //
+    // A disabled source is not prepared, so its render tiles are left over from the last frame
+    // it rendered and refer to tiles its pyramid has since released: reading them was a
+    // use-after-free (EXC_BAD_ACCESS in DEMData::getMinElevation when terrain came back on after
+    // a style reload in which the DEM source had been unused, e.g. hillshade hidden).
+    if (!demSource || !demSource->isEnabled()) {
         return;
     }
     const auto renderTiles = demSource->getRawRenderTiles();
     double minEle = std::numeric_limits<double>::max();
     double maxEle = std::numeric_limits<double>::lowest();
+    tileRanges.reserve(renderTiles->size());
     for (const auto& renderTile : *renderTiles) {
         const auto& tile = renderTile.getTile();
         if (tile.kind != Tile::Kind::RasterDEM) {
@@ -35,8 +39,11 @@ DEMElevationProvider::DEMElevationProvider(const RenderSource* demSource_, doubl
             continue;
         }
         const auto& demData = bucket->getDEMData();
-        minEle = std::min(minEle, static_cast<double>(demData.getMinElevation()));
-        maxEle = std::max(maxEle, static_cast<double>(demData.getMaxElevation()));
+        const double lo = demData.getMinElevation();
+        const double hi = demData.getMaxElevation();
+        tileRanges.push_back({renderTile.id.canonical, Range<double>{lo * exaggeration, hi * exaggeration}});
+        minEle = std::min(minEle, lo);
+        maxEle = std::max(maxEle, hi);
     }
     if (minEle <= maxEle) {
         loadedRange = Range<double>{minEle * exaggeration, maxEle * exaggeration};
@@ -44,37 +51,20 @@ DEMElevationProvider::DEMElevationProvider(const RenderSource* demSource_, doubl
 }
 
 std::optional<Range<double>> DEMElevationProvider::getTileElevationRange(const CanonicalTileID& id) const {
-    if (!demSource) {
-        return std::nullopt;
-    }
-
-    const auto renderTiles = demSource->getRawRenderTiles();
-    if (renderTiles->empty()) {
+    if (tileRanges.empty()) {
         return std::nullopt;
     }
 
     // The tile's own DEM, or failing that the deepest loaded ancestor: an ancestor's
     // range covers this tile's area, so it stays conservative, just looser.
-    const DEMData* best = nullptr;
-    uint8_t bestZoom = 0;
-    for (const auto& renderTile : *renderTiles) {
-        const auto& tile = renderTile.getTile();
-        if (tile.kind != Tile::Kind::RasterDEM) {
+    const TileRange* best = nullptr;
+    for (const auto& candidate : tileRanges) {
+        const bool covers = candidate.id == id || id.isChildOf(candidate.id);
+        if (!covers || (best && candidate.id.z <= best->id.z)) {
             continue;
         }
-        const auto& candidate = renderTile.id.canonical;
-        const bool covers = candidate == id || id.isChildOf(candidate);
-        if (!covers || (best && candidate.z <= bestZoom)) {
-            continue;
-        }
-        const auto* demTile = static_cast<const RasterDEMTile*>(&tile);
-        const auto* bucket = const_cast<RasterDEMTile*>(demTile)->getBucket();
-        if (!bucket) {
-            continue;
-        }
-        best = &bucket->getDEMData();
-        bestZoom = candidate.z;
-        if (candidate == id) {
+        best = &candidate;
+        if (candidate.id == id) {
             break; // exact match; nothing looser can improve on it
         }
     }
@@ -88,7 +78,7 @@ std::optional<Range<double>> DEMElevationProvider::getTileElevationRange(const C
 
     // Exaggeration is applied to the mesh in the terrain vertex shader, so the bounds
     // have to carry it too, or an exaggerated peak would still be culled.
-    return Range<double>{best->getMinElevation() * exaggeration, best->getMaxElevation() * exaggeration};
+    return best->range;
 }
 
 } // namespace mln
