@@ -626,6 +626,14 @@ void Map::anchorCenterOnTerrain() {
     impl->anchorCenterOnTerrain();
 }
 
+bool Map::setCenterAltitudeKeepingView(double altitudeMeters) {
+    if (!impl->setCenterAltitudeKeepingView(altitudeMeters)) {
+        return false;
+    }
+    impl->onUpdate();
+    return true;
+}
+
 void Map::setCenterClampedToGround(bool clamped) {
     impl->centerClampedToGround = clamped;
 }
