@@ -54,6 +54,10 @@ public:
     /// is reported - a gesture handler anchors with this as the gesture starts, and a reported
     /// change would read to apps as the gesture having ended.
     void setCenterKeepingView(const LatLng& center, double zoom, double centerAltitude);
+    /// Raises or lowers the centre, and the camera with it, keeping zoom, pitch and bearing. During a
+    /// gesture this is reported as the camera changing, as the gesture's own moves are, not as a
+    /// separate move starting and stopping, which apps would read as the gesture having ended.
+    void setCenterAltitude(double centerAltitude);
     /** Asynchronously transitions all specified camera options linearly along
         an optional time curve. However, center coordinate is not transitioned
         linearly as, instead, ground speed is kept linear.*/

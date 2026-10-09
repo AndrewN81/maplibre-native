@@ -227,3 +227,48 @@ TEST(TerrainElevationIndex, NoLiftWithoutTerrain) {
     test.render(1);
     EXPECT_NEAR(test.map.getCameraOptions({}).centerAltitude.value_or(0.0), 0.0, 1e-6);
 }
+
+// Mid-gesture the lift is part of the gesture's movement: reported as the camera changing, not as
+// a move that starts and stops, which apps read as the gesture having ended.
+TEST(TerrainElevationIndex, LiftDuringAGestureIsNotACameraStop) {
+    struct CountingObserver : MapObserver {
+        int willChange = 0;
+        int didChange = 0;
+        int isChanging = 0;
+        void onCameraWillChange(CameraChangeMode) override { ++willChange; }
+        void onCameraIsChanging() override { ++isChanging; }
+        void onCameraDidChange(CameraChangeMode) override { ++didChange; }
+    } observer;
+
+    util::RunLoop loop;
+    auto fileSource = std::make_shared<StubFileSource>(ResourceOptions::Default(), ClientOptions());
+    const std::string tile = encodePNG(makeDEMImage(plateauMeters));
+    fileSource->tileResponse = [&](const Resource&) {
+        Response res;
+        res.data = std::make_shared<std::string>(tile);
+        return res;
+    };
+    HeadlessFrontend frontend{{256, 256}, 1};
+    MapAdapter map(
+        frontend, observer, fileSource, MapOptions().withMapMode(MapMode::Static).withSize(frontend.getSize()));
+    map.setCenterClampedToGround(false);
+    map.getStyle().loadJSON(terrainStyle);
+    map.jumpTo(CameraOptions().withCenter(innsbruck).withZoom(2.0).withPitch(60.0));
+    for (int i = 0; i < 4; ++i) {
+        loop.runOnce();
+        frontend.render(map);
+    }
+    ASSERT_TRUE(map.getTerrainElevation(innsbruck));
+
+    map.setGestureInProgress(true);
+    map.jumpTo(CameraOptions().withZoom(16.0).withCenterAltitude(0.0)); // inside the plateau
+    observer.willChange = observer.didChange = observer.isChanging = 0;
+    loop.runOnce();
+    frontend.render(map);
+
+    EXPECT_GE(map.getFreeCameraOptions().getLocation()->altitude, plateauMeters + 49.0);
+    EXPECT_EQ(observer.willChange, 0);
+    EXPECT_EQ(observer.didChange, 0);
+    EXPECT_GT(observer.isChanging, 0);
+    map.setGestureInProgress(false);
+}

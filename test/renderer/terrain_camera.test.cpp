@@ -3,6 +3,7 @@
 #include <mln/test/map_adapter.hpp>
 
 #include <mln/gfx/headless_frontend.hpp>
+#include <mln/map/bound_options.hpp>
 #include <mln/map/camera.hpp>
 #include <mln/map/map_options.hpp>
 #include <mln/math/angles.hpp>
@@ -259,5 +260,30 @@ TEST(TerrainCamera, AnchoringReportsNoCameraChange) {
     const vec3 eyeAfter = *map.getFreeCameraOptions().position;
     for (int i = 0; i < 3; ++i) {
         EXPECT_NEAR(eyeAfter[i], eyeBefore[i], 5 * metre) << "axis " << i;
+    }
+}
+
+// Near a zoom limit the anchor goes as far up the line of sight as the limit allows, keeping the
+// view, rather than leaving the centre at sea level under the ground being looked at.
+TEST(TerrainCamera, AnchorStopsAtTheZoomLimitKeepingTheView) {
+    TerrainCameraTest test;
+    test.map.setCenterClampedToGround(false);
+    test.map.jumpTo(CameraOptions().withZoom(10.0));
+    ASSERT_NEAR(test.renderAndGetAltitude(8), 0.0, 0.001);
+
+    // A full anchor onto the 1000 m plateau needs about zoom 10.15 here (pitch 60, a 256 px view).
+    test.map.setBounds(BoundOptions().withMaxZoom(10.07));
+    const vec3 before = *test.map.getFreeCameraOptions().position;
+
+    test.map.anchorCenterOnTerrain();
+    const auto after = test.map.getCameraOptions({});
+    EXPECT_NEAR(*after.zoom, 10.07, 1e-6);
+    EXPECT_GT(*after.centerAltitude, 100.0);
+    EXPECT_LT(*after.centerAltitude, plateauMeters - 100.0);
+
+    const double metre = 1.0 / (util::M2PI * util::EARTH_RADIUS_M * std::cos(util::deg2rad(47.2692)));
+    const vec3 eye = *test.map.getFreeCameraOptions().position;
+    for (int i = 0; i < 3; ++i) {
+        EXPECT_NEAR(eye[i], before[i], 5 * metre) << "axis " << i;
     }
 }

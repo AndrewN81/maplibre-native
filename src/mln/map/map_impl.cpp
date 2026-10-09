@@ -3,6 +3,7 @@
 #include <limits>
 #include <mln/layermanager/layer_manager.hpp>
 #include <mln/map/map_impl.hpp>
+#include <mln/math/clamp.hpp>
 #include <mln/renderer/terrain_elevation_index.hpp>
 #include <mln/renderer/update_parameters.hpp>
 #include <mln/storage/file_source.hpp>
@@ -369,25 +370,31 @@ bool Map::Impl::setCenterAltitudeKeepingView(double altitudeMeters) {
     // Camera-to-centre distance in metres, along the line of sight.
     const double metresPerPixel = Projection::getMetersPerPixelAtLatitude(center.latitude(), *camera.zoom);
     const double distance = state.getCameraToCenterDistance() * metresPerPixel;
-    // Up the line of sight by `rise` (down, for a negative one): that much closer to the camera,
-    // rise·tan(pitch) nearer it on the ground.
-    const double closer = rise / std::max(std::cos(pitch), 0.05);
-    const double remaining = distance - closer;
+    // Up the line of sight by `rise` (down, for a negative one): that much closer to the camera.
+    // The zoom follows the distance left, so where it would pass a zoom limit go only as far as
+    // the limit allows: still the same view, with the centre as near the altitude as it can be.
+    // Skipping instead would leave a centre at sea level under the hill being looked at, and the
+    // tile cover with it.
+    double remaining = distance - rise / std::max(std::cos(pitch), 0.05);
     if (remaining < distance * 0.05) {
         return false; // the ground is (nearly) at the camera: leave it
     }
-    const double shift = rise * std::tan(pitch);
-    // Towards the camera, which sits opposite the bearing.
+    const double zoom = util::clamp(
+        *camera.zoom + std::log2(distance / remaining), state.getMinZoom(), state.getMaxZoom());
+    remaining = distance / std::pow(2.0, zoom - *camera.zoom);
+    const double closer = distance - remaining;
+    const double appliedRise = closer * std::max(std::cos(pitch), 0.05);
+    if (std::abs(appliedRise) < 1.0) {
+        return false; // already at the zoom limit
+    }
+    // rise·tan(pitch) nearer the camera on the ground, which sits opposite the bearing.
+    const double shift = appliedRise * std::tan(pitch);
     const double north = -shift * std::cos(bearing), east = -shift * std::sin(bearing);
     const LatLng anchored{center.latitude() + north / 111195.0,
                           center.longitude() + east / (111195.0 * std::cos(util::deg2rad(center.latitude())))};
-    const double zoom = *camera.zoom + std::log2(distance / remaining);
-    if (zoom > state.getMaxZoom() || zoom < state.getMinZoom()) {
-        return false; // past a zoom limit the view could not stay the same
-    }
     // The view does not change, so this is not reported as a camera change: a gesture anchors here
     // as it starts, and apps would read a reported change as the gesture having ended.
-    transform.setCenterKeepingView(anchored, zoom, altitudeMeters);
+    transform.setCenterKeepingView(anchored, zoom, state.getCenterAltitude() + appliedRise);
     return true;
 }
 
@@ -409,7 +416,7 @@ void Map::Impl::keepCameraAboveTerrain() {
     if (shortfall < 0.5) {
         return;
     }
-    transform.jumpTo(CameraOptions().withCenterAltitude(state.getCenterAltitude() + shortfall));
+    transform.setCenterAltitude(state.getCenterAltitude() + shortfall);
 }
 
 void Map::Impl::onTerrainElevationIndexChanged(std::shared_ptr<const TerrainElevationIndex> index) {

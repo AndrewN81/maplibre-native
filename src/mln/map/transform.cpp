@@ -102,6 +102,15 @@ void Transform::jumpTo(const CameraOptions& camera) {
     easeTo(camera);
 }
 
+void Transform::setCenterAltitude(double centerAltitude) {
+    if (!isGestureInProgress()) {
+        jumpTo(CameraOptions().withCenterAltitude(centerAltitude));
+        return;
+    }
+    state.setCenterAltitude(centerAltitude);
+    observer.onCameraIsChanging();
+}
+
 void Transform::setCenterKeepingView(const LatLng& center, double zoom, double centerAltitude) {
     // As easeTo applies a frame, wrapped unless the map is bounded
     state.setLatLngZoom(state.getLatLngBounds() != LatLngBounds() ? center : center.wrapped(), zoom);
