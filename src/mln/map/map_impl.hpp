@@ -139,6 +139,15 @@ public:
     /// back to sea level since it was removed (a transition was in flight).
     bool hadTerrain = false;
     bool centerAwaitingSeaLevel = false;
+    /// Keeps the camera above the terrain: where the ground under the camera (from
+    /// terrainElevationIndex) reaches within cameraTerrainClearanceMeters of it, raises the centre
+    /// altitude by the difference, which lifts the camera with the zoom, pitch and bearing kept, as
+    /// maplibre-gl-js lifts a held elevation (Camera._keepCameraAboveTerrain). Runs in onUpdate, on
+    /// this thread and in the same update as the camera move, so it never lands a frame late or
+    /// mid-gesture the way a render-side report would. Left to the end of a transition, which would
+    /// re-apply the altitude it started with.
+    void keepCameraAboveTerrain();
+    static constexpr double cameraTerrainClearanceMeters = 50.0;
     bool debugAboveGroundLog = false;
 };
 

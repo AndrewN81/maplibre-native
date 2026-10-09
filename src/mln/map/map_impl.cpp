@@ -3,6 +3,7 @@
 #include <limits>
 #include <mln/layermanager/layer_manager.hpp>
 #include <mln/map/map_impl.hpp>
+#include <mln/renderer/terrain_elevation_index.hpp>
 #include <mln/renderer/update_parameters.hpp>
 #include <mln/storage/file_source.hpp>
 #include <mln/style/style_impl.hpp>
@@ -131,6 +132,9 @@ void Map::Impl::onUpdate() {
     if (centerAwaitingSeaLevel && !transform.inTransition()) {
         centerAwaitingSeaLevel = false;
         setCenterAltitudeKeepingView(0.0);
+    }
+    if (hasTerrain && !transform.inTransition()) {
+        keepCameraAboveTerrain();
     }
 
     std::optional<Immutable<style::Terrain::Impl>> terrainImpl;
@@ -382,6 +386,27 @@ bool Map::Impl::setCenterAltitudeKeepingView(double altitudeMeters) {
                          .withZoom(*camera.zoom + std::log2(distance / remaining))
                          .withCenterAltitude(altitudeMeters));
     return true;
+}
+
+void Map::Impl::keepCameraAboveTerrain() {
+    if (!terrainElevationIndex) {
+        return;
+    }
+    const TransformState& state = transform.getState();
+    const auto camera = state.getFreeCameraOptions().getLocation();
+    if (!camera) {
+        return;
+    }
+    const auto ground = terrainElevationIndex->getElevation(camera->location);
+    if (!ground) {
+        return;
+    }
+    const double shortfall = *ground + cameraTerrainClearanceMeters - camera->altitude;
+    // Sub-metre shortfalls are sampling noise between frames, not the camera entering the ground
+    if (shortfall < 0.5) {
+        return;
+    }
+    transform.jumpTo(CameraOptions().withCenterAltitude(state.getCenterAltitude() + shortfall));
 }
 
 void Map::Impl::onTerrainElevationIndexChanged(std::shared_ptr<const TerrainElevationIndex> index) {

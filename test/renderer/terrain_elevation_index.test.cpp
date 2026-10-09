@@ -192,3 +192,38 @@ TEST(TerrainElevationIndex, WithoutTerrainProjectionIsSeaLevel) {
     const LatLng picked = test.map.latLngForPixelOnTerrain(onSurface);
     EXPECT_NEAR(picked.latitude(), target.latitude(), 1e-6);
 }
+
+// A camera put inside the terrain is lifted out on the next update, keeping its zoom and pitch:
+// the centre rises with it, so a pan or pinch into higher ground never ends up inside the hill.
+TEST(TerrainElevationIndex, CameraIsKeptAboveTheTerrain) {
+    TerrainProjectionTest test;
+    test.render(4); // lets the map get the plateau's heights
+    ASSERT_TRUE(test.map.getTerrainElevation(innsbruck));
+
+    // Close in and pitched with the centre at sea level, the camera sits inside the 1000 m plateau.
+    test.map.jumpTo(CameraOptions().withCenter(innsbruck).withZoom(16.0).withPitch(60.0).withCenterAltitude(0.0));
+    ASSERT_LT(test.map.getFreeCameraOptions().getLocation()->altitude, plateauMeters);
+
+    test.render(1);
+    const auto camera = test.map.getFreeCameraOptions().getLocation();
+    ASSERT_TRUE(camera);
+    EXPECT_GE(camera->altitude, plateauMeters + 49.0);
+    const auto options = test.map.getCameraOptions({});
+    EXPECT_NEAR(*options.zoom, 16.0, 1e-6);
+    EXPECT_NEAR(*options.pitch, 60.0, 1e-6);
+
+    // Already clear: left alone.
+    const double lifted = *options.centerAltitude;
+    test.render(2);
+    EXPECT_NEAR(*test.map.getCameraOptions({}).centerAltitude, lifted, 1e-6);
+}
+
+// Without terrain the camera is not touched.
+TEST(TerrainElevationIndex, NoLiftWithoutTerrain) {
+    TerrainProjectionTest test;
+    test.map.getStyle().setTerrain(nullptr);
+    test.render(2);
+    test.map.jumpTo(CameraOptions().withCenter(innsbruck).withZoom(16.0).withPitch(60.0).withCenterAltitude(0.0));
+    test.render(1);
+    EXPECT_NEAR(test.map.getCameraOptions({}).centerAltitude.value_or(0.0), 0.0, 1e-6);
+}
