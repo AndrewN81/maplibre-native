@@ -135,6 +135,7 @@ void Map::Impl::onUpdate() {
         setCenterAltitudeKeepingView(0.0);
     }
     if (hasTerrain && !transform.inTransition()) {
+        followTerrainUnderCenter();
         keepCameraAboveTerrain();
     }
 
@@ -390,6 +391,18 @@ bool Map::Impl::setCenterAltitudeKeepingView(double altitudeMeters) {
     const double clampedZoom = util::clamp(zoom, state.getMinZoom(), state.getMaxZoom());
     transform.setCenterOnLineOfSight(anchored, clampedZoom, altitudeMeters, clampedZoom != zoom);
     return true;
+}
+
+void Map::Impl::followTerrainUnderCenter() {
+    if (!terrainElevationIndex || !transform.isGestureInProgress()) {
+        return;
+    }
+    const TransformState& state = transform.getState();
+    const auto ground = terrainElevationIndex->getElevation(state.getLatLng());
+    if (!ground || std::abs(*ground - state.getCenterAltitude()) < terrainFollowToleranceMeters) {
+        return;
+    }
+    setCenterAltitudeKeepingView(*ground);
 }
 
 bool Map::Impl::keepCameraAboveTerrain() {

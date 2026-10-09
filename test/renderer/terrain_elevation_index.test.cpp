@@ -272,3 +272,27 @@ TEST(TerrainElevationIndex, LiftDuringAGestureIsNotACameraStop) {
     EXPECT_GT(observer.isChanging, 0);
     map.setGestureInProgress(false);
 }
+
+// During a gesture the centre follows the ground under it, keeping the view; at rest it is left
+// where it is.
+TEST(TerrainElevationIndex, CentreFollowsTheGroundDuringAGesture) {
+    TerrainProjectionTest test;
+    test.map.jumpTo(CameraOptions().withZoom(10.0));
+    test.render(4);
+    ASSERT_TRUE(test.map.getTerrainElevation(innsbruck));
+    ASSERT_NEAR(test.map.getCameraOptions({}).centerAltitude.value_or(0.0), 0.0, 1e-6);
+
+    // At rest: untouched
+    test.render(1);
+    EXPECT_NEAR(test.map.getCameraOptions({}).centerAltitude.value_or(0.0), 0.0, 1e-6);
+
+    const vec3 eye = *test.map.getFreeCameraOptions().position;
+    test.map.setGestureInProgress(true);
+    test.map.moveBy({1.0, 0.0}); // a pan frame
+    test.render(1);
+    EXPECT_NEAR(*test.map.getCameraOptions({}).centerAltitude, plateauMeters, 0.5);
+    // The view stayed where the pan put it: one pixel of pan, no more
+    const vec3 after = *test.map.getFreeCameraOptions().position;
+    EXPECT_NEAR(after[2], eye[2], std::abs(eye[2]) * 1e-3);
+    test.map.setGestureInProgress(false);
+}

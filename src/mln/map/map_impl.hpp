@@ -147,6 +147,16 @@ public:
     /// mid-gesture the way a render-side report would. Left to the end of a transition, which would
     /// re-apply the altitude it started with.
     bool keepCameraAboveTerrain();
+    /// During a gesture, keeps the centre on the ground under it as the gesture carries it over
+    /// higher or lower terrain - the anchor a gesture takes as it starts, kept up as it goes. The
+    /// view does not change, unless the zoom that needs passes a limit; then the camera moves back
+    /// along the line of sight, so over rising ground near an app's zoom cap the camera backs off
+    /// rather than closing on the hillside. Only within a gesture: Android caches the camera and
+    /// refreshes it at the gesture's end, and a quiet change at rest would leave that cache stale.
+    void followTerrainUnderCenter();
+    /// Height changes smaller than this are left alone, so the pan's drag plane is not nudged by
+    /// every metre of ground it crosses.
+    static constexpr double terrainFollowToleranceMeters = 25.0;
     static constexpr double cameraTerrainClearanceMeters = 50.0;
     bool debugAboveGroundLog = false;
 };
