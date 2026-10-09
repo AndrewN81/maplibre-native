@@ -370,57 +370,59 @@ bool Map::Impl::setCenterAltitudeKeepingView(double altitudeMeters) {
     // Camera-to-centre distance in metres, along the line of sight.
     const double metresPerPixel = Projection::getMetersPerPixelAtLatitude(center.latitude(), *camera.zoom);
     const double distance = state.getCameraToCenterDistance() * metresPerPixel;
-    // Up the line of sight by `rise` (down, for a negative one): that much closer to the camera.
-    // The zoom follows the distance left, so where it would pass a zoom limit go only as far as
-    // the limit allows: still the same view, with the centre as near the altitude as it can be.
-    // Skipping instead would leave a centre at sea level under the hill being looked at, and the
-    // tile cover with it.
-    double remaining = distance - rise / std::max(std::cos(pitch), 0.05);
+    // Up the line of sight by `rise` (down, for a negative one): that much closer to the camera,
+    // rise·tan(pitch) nearer it on the ground.
+    const double closer = rise / std::max(std::cos(pitch), 0.05);
+    const double remaining = distance - closer;
     if (remaining < distance * 0.05) {
         return false; // the ground is (nearly) at the camera: leave it
     }
-    const double zoom = util::clamp(
-        *camera.zoom + std::log2(distance / remaining), state.getMinZoom(), state.getMaxZoom());
-    remaining = distance / std::pow(2.0, zoom - *camera.zoom);
-    const double closer = distance - remaining;
-    const double appliedRise = closer * std::max(std::cos(pitch), 0.05);
-    if (std::abs(appliedRise) < 1.0) {
-        return false; // already at the zoom limit
-    }
-    // rise·tan(pitch) nearer the camera on the ground, which sits opposite the bearing.
-    const double shift = appliedRise * std::tan(pitch);
+    const double shift = rise * std::tan(pitch);
+    // Towards the camera, which sits opposite the bearing.
     const double north = -shift * std::cos(bearing), east = -shift * std::sin(bearing);
     const LatLng anchored{center.latitude() + north / 111195.0,
                           center.longitude() + east / (111195.0 * std::cos(util::deg2rad(center.latitude())))};
-    // The view does not change, so this is not reported as a camera change: a gesture anchors here
-    // as it starts, and apps would read a reported change as the gesture having ended.
-    transform.setCenterKeepingView(anchored, zoom, state.getCenterAltitude() + appliedRise);
+    const double zoom = *camera.zoom + std::log2(distance / remaining);
+    // Same view: not reported as a camera change, since a gesture anchors here as it starts and apps
+    // would read one as the gesture having ended. Where the zoom that view needs passes a limit, the
+    // centre still goes onto the altitude and the camera moves back along the line of sight to the
+    // limit - over high ground near the zoom cap that is what keeps the camera off the hillside.
+    const double clampedZoom = util::clamp(zoom, state.getMinZoom(), state.getMaxZoom());
+    transform.setCenterOnLineOfSight(anchored, clampedZoom, altitudeMeters, clampedZoom != zoom);
     return true;
 }
 
-void Map::Impl::keepCameraAboveTerrain() {
+bool Map::Impl::keepCameraAboveTerrain() {
     if (!terrainElevationIndex) {
-        return;
+        return false;
     }
     const TransformState& state = transform.getState();
     const auto camera = state.getFreeCameraOptions().getLocation();
     if (!camera) {
-        return;
+        return false;
     }
     const auto ground = terrainElevationIndex->getElevation(camera->location);
     if (!ground) {
-        return;
+        return false;
     }
     const double shortfall = *ground + cameraTerrainClearanceMeters - camera->altitude;
     // Sub-metre shortfalls are sampling noise between frames, not the camera entering the ground
     if (shortfall < 0.5) {
-        return;
+        return false;
     }
     transform.setCenterAltitude(state.getCenterAltitude() + shortfall);
+    return true;
 }
 
 void Map::Impl::onTerrainElevationIndexChanged(std::shared_ptr<const TerrainElevationIndex> index) {
     terrainElevationIndex = std::move(index);
+    // Heights for the ground under a camera that is not moving - terrain just turned on, or its
+    // tiles just arrived - get the same check a move would: otherwise a camera that terrain came
+    // up around stays inside the hill until the next gesture.
+    if (style->impl->getTerrain() && !transform.isGestureInProgress() && !transform.inTransition() &&
+        keepCameraAboveTerrain()) {
+        onUpdate();
+    }
 }
 
 void Map::Impl::onTerrainCenterElevationChanged(double elevationMeters) {

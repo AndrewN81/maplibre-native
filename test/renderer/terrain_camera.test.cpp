@@ -263,9 +263,10 @@ TEST(TerrainCamera, AnchoringReportsNoCameraChange) {
     }
 }
 
-// Near a zoom limit the anchor goes as far up the line of sight as the limit allows, keeping the
-// view, rather than leaving the centre at sea level under the ground being looked at.
-TEST(TerrainCamera, AnchorStopsAtTheZoomLimitKeepingTheView) {
+// Near a zoom limit the centre still goes onto the ground, and the camera moves back along the
+// line of sight to the limit: over high ground near an app's zoom cap that keeps the camera off
+// the hillside, where stopping short would leave the centre at sea level under the hill.
+TEST(TerrainCamera, AnchorAtTheZoomLimitMovesTheCameraBack) {
     TerrainCameraTest test;
     test.map.setCenterClampedToGround(false);
     test.map.jumpTo(CameraOptions().withZoom(10.0));
@@ -273,17 +274,12 @@ TEST(TerrainCamera, AnchorStopsAtTheZoomLimitKeepingTheView) {
 
     // A full anchor onto the 1000 m plateau needs about zoom 10.15 here (pitch 60, a 256 px view).
     test.map.setBounds(BoundOptions().withMaxZoom(10.07));
-    const vec3 before = *test.map.getFreeCameraOptions().position;
+    const double cameraBefore = test.map.getFreeCameraOptions().getLocation()->altitude;
 
     test.map.anchorCenterOnTerrain();
     const auto after = test.map.getCameraOptions({});
     EXPECT_NEAR(*after.zoom, 10.07, 1e-6);
-    EXPECT_GT(*after.centerAltitude, 100.0);
-    EXPECT_LT(*after.centerAltitude, plateauMeters - 100.0);
-
-    const double metre = 1.0 / (util::M2PI * util::EARTH_RADIUS_M * std::cos(util::deg2rad(47.2692)));
-    const vec3 eye = *test.map.getFreeCameraOptions().position;
-    for (int i = 0; i < 3; ++i) {
-        EXPECT_NEAR(eye[i], before[i], 5 * metre) << "axis " << i;
-    }
+    EXPECT_NEAR(*after.centerAltitude, plateauMeters, 0.5);
+    // Moved back, so up: further from the plateau than it was
+    EXPECT_GT(test.map.getFreeCameraOptions().getLocation()->altitude, cameraBefore + 100.0);
 }

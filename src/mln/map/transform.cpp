@@ -111,10 +111,19 @@ void Transform::setCenterAltitude(double centerAltitude) {
     observer.onCameraIsChanging();
 }
 
-void Transform::setCenterKeepingView(const LatLng& center, double zoom, double centerAltitude) {
+void Transform::setCenterOnLineOfSight(const LatLng& center, double zoom, double centerAltitude, bool cameraMoves) {
+    const bool reportJump = cameraMoves && !isGestureInProgress();
+    if (reportJump) {
+        observer.onCameraWillChange(MapObserver::CameraChangeMode::Immediate);
+    }
     // As easeTo applies a frame, wrapped unless the map is bounded
     state.setLatLngZoom(state.getLatLngBounds() != LatLngBounds() ? center : center.wrapped(), zoom);
     state.setCenterAltitude(centerAltitude);
+    if (reportJump) {
+        observer.onCameraDidChange(MapObserver::CameraChangeMode::Immediate);
+    } else if (cameraMoves) {
+        observer.onCameraIsChanging();
+    }
 }
 
 /**

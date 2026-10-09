@@ -146,7 +146,7 @@ public:
     /// this thread and in the same update as the camera move, so it never lands a frame late or
     /// mid-gesture the way a render-side report would. Left to the end of a transition, which would
     /// re-apply the altitude it started with.
-    void keepCameraAboveTerrain();
+    bool keepCameraAboveTerrain();
     static constexpr double cameraTerrainClearanceMeters = 50.0;
     bool debugAboveGroundLog = false;
 };

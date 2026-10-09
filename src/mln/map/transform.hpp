@@ -49,11 +49,13 @@ public:
 
     /** Instantaneously, synchronously applies the given camera options. */
     void jumpTo(const CameraOptions&);
-    /// Re-describes the current view from another point on its line of sight: the centre, zoom
-    /// and centre altitude change, the camera and everything on screen do not. So no camera change
-    /// is reported - a gesture handler anchors with this as the gesture starts, and a reported
-    /// change would read to apps as the gesture having ended.
-    void setCenterKeepingView(const LatLng& center, double zoom, double centerAltitude);
+    /// Puts the centre at another point on the current line of sight, with its zoom and altitude.
+    /// When `cameraMoves` is false this re-describes the same view - nothing on screen moves - and
+    /// no camera change is reported: a gesture handler anchors with this as the gesture starts, and
+    /// a reported change would read to apps as the gesture having ended. When true (the zoom it
+    /// needed passed a limit, so the camera moved back along the line of sight), it is reported as
+    /// the camera changing during a gesture and as a jump otherwise.
+    void setCenterOnLineOfSight(const LatLng& center, double zoom, double centerAltitude, bool cameraMoves);
     /// Raises or lowers the centre, and the camera with it, keeping zoom, pitch and bearing. During a
     /// gesture this is reported as the camera changing, as the gesture's own moves are, not as a
     /// separate move starting and stopping, which apps would read as the gesture having ended.
