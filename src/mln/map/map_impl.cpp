@@ -381,10 +381,13 @@ bool Map::Impl::setCenterAltitudeKeepingView(double altitudeMeters) {
     const double north = -shift * std::cos(bearing), east = -shift * std::sin(bearing);
     const LatLng anchored{center.latitude() + north / 111195.0,
                           center.longitude() + east / (111195.0 * std::cos(util::deg2rad(center.latitude())))};
-    transform.jumpTo(CameraOptions()
-                         .withCenter(anchored)
-                         .withZoom(*camera.zoom + std::log2(distance / remaining))
-                         .withCenterAltitude(altitudeMeters));
+    const double zoom = *camera.zoom + std::log2(distance / remaining);
+    if (zoom > state.getMaxZoom() || zoom < state.getMinZoom()) {
+        return false; // past a zoom limit the view could not stay the same
+    }
+    // The view does not change, so this is not reported as a camera change: a gesture anchors here
+    // as it starts, and apps would read a reported change as the gesture having ended.
+    transform.setCenterKeepingView(anchored, zoom, altitudeMeters);
     return true;
 }
 

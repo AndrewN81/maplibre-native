@@ -102,6 +102,12 @@ void Transform::jumpTo(const CameraOptions& camera) {
     easeTo(camera);
 }
 
+void Transform::setCenterKeepingView(const LatLng& center, double zoom, double centerAltitude) {
+    // As easeTo applies a frame, wrapped unless the map is bounded
+    state.setLatLngZoom(state.getLatLngBounds() != LatLngBounds() ? center : center.wrapped(), zoom);
+    state.setCenterAltitude(centerAltitude);
+}
+
 /**
  * Change any combination of center, zoom, bearing, pitch and edgeInsets, with a
  * smooth animation between old and new values. The map will retain the current

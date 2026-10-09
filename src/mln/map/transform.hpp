@@ -49,6 +49,11 @@ public:
 
     /** Instantaneously, synchronously applies the given camera options. */
     void jumpTo(const CameraOptions&);
+    /// Re-describes the current view from another point on its line of sight: the centre, zoom
+    /// and centre altitude change, the camera and everything on screen do not. So no camera change
+    /// is reported - a gesture handler anchors with this as the gesture starts, and a reported
+    /// change would read to apps as the gesture having ended.
+    void setCenterKeepingView(const LatLng& center, double zoom, double centerAltitude);
     /** Asynchronously transitions all specified camera options linearly along
         an optional time curve. However, center coordinate is not transitioned
         linearly as, instead, ground speed is kept linear.*/

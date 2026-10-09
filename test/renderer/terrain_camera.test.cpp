@@ -209,3 +209,55 @@ TEST(TerrainCamera, AnchoredCentreReturnsToSeaLevelWhenTerrainIsRemoved) {
     test.map.anchorCenterOnTerrain();
     EXPECT_NEAR(test.map.getCameraOptions({}).centerAltitude.value_or(0.0), 0.0, 0.001);
 }
+
+// Anchoring re-describes the same view, so it reports no camera change: platforms anchor as a
+// gesture starts, and a reported change reads to apps as the gesture having ended (iOS
+// regionDidChange, Android onCameraIdle), which then run their end-of-gesture work mid-drag.
+TEST(TerrainCamera, AnchoringReportsNoCameraChange) {
+    struct CountingObserver : MapObserver {
+        int willChange = 0;
+        int didChange = 0;
+        void onCameraWillChange(CameraChangeMode) override { ++willChange; }
+        void onCameraDidChange(CameraChangeMode) override { ++didChange; }
+    } observer;
+
+    util::RunLoop loop;
+    auto fileSource = std::make_shared<StubFileSource>(ResourceOptions::Default(), ClientOptions());
+    const std::string tile = makeFlatDEMTile();
+    fileSource->tileResponse = [&](const Resource&) {
+        Response res;
+        res.data = std::make_shared<std::string>(tile);
+        return res;
+    };
+    HeadlessFrontend frontend{{256, 256}, 1};
+    MapAdapter map(
+        frontend, observer, fileSource, MapOptions().withMapMode(MapMode::Static).withSize(frontend.getSize()));
+    map.setCenterClampedToGround(false);
+    map.getStyle().loadJSON(terrainStyle);
+    map.jumpTo(CameraOptions().withCenter(LatLng{47.2692, 11.4041}).withZoom(10.0).withPitch(60.0));
+    for (int i = 0; i < 8; ++i) {
+        loop.runOnce();
+        frontend.render(map);
+    }
+
+    const vec3 eyeBefore = *map.getFreeCameraOptions().position;
+    observer.willChange = 0;
+    observer.didChange = 0;
+
+    map.anchorCenterOnTerrain();
+    ASSERT_NEAR(*map.getCameraOptions({}).centerAltitude, plateauMeters, 0.5);
+    EXPECT_EQ(observer.willChange, 0);
+    EXPECT_EQ(observer.didChange, 0);
+
+    EXPECT_TRUE(map.setCenterAltitudeKeepingView(0.0));
+    EXPECT_EQ(observer.willChange, 0);
+    EXPECT_EQ(observer.didChange, 0);
+
+    // ...and the camera did not move.
+    // One metre in the Mercator units of the camera position, at the centre's latitude.
+    const double metre = 1.0 / (util::M2PI * util::EARTH_RADIUS_M * std::cos(util::deg2rad(47.2692)));
+    const vec3 eyeAfter = *map.getFreeCameraOptions().position;
+    for (int i = 0; i < 3; ++i) {
+        EXPECT_NEAR(eyeAfter[i], eyeBefore[i], 5 * metre) << "axis " << i;
+    }
+}
