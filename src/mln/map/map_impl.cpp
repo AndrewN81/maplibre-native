@@ -384,6 +384,10 @@ bool Map::Impl::setCenterAltitudeKeepingView(double altitudeMeters) {
     return true;
 }
 
+void Map::Impl::onTerrainElevationIndexChanged(std::shared_ptr<const TerrainElevationIndex> index) {
+    terrainElevationIndex = std::move(index);
+}
+
 void Map::Impl::onTerrainCenterElevationChanged(double elevationMeters) {
     terrainCenterElevation = elevationMeters;
     if (!centerClampedToGround) {

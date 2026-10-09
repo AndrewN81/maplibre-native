@@ -65,6 +65,7 @@ public:
     void onWillStartRenderingMap() final;
     void onDidFinishRenderingMap() final;
     void onTerrainCenterElevationChanged(double elevationMeters) final;
+    void onTerrainElevationIndexChanged(std::shared_ptr<const TerrainElevationIndex>) final;
     void onStyleImageMissing(const std::string&, const std::function<void()>&) final;
     void onRemoveUnusedStyleImages(const std::vector<std::string>&) final;
     void onRegisterShaders(gfx::ShaderRegistry&) final;
@@ -126,6 +127,9 @@ public:
     bool centerClampedToGround = false;
     /// Terrain height under the centre, as the renderer last reported it (NaN until then).
     double terrainCenterElevation = std::numeric_limits<double>::quiet_NaN();
+    /// The renderer's terrain heights, copied for this side (onTerrainElevationIndexChanged); null
+    /// without terrain. Map's terrain projection reads it so it never waits on the renderer.
+    std::shared_ptr<const TerrainElevationIndex> terrainElevationIndex;
     void anchorCenterOnTerrain();
     /// Slides the centre along the line of sight to `altitudeMeters`, the zoom following, so the
     /// camera stays where it is. False when there was nothing to move, or the plane at that
